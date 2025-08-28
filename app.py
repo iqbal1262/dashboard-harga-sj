@@ -133,10 +133,10 @@ if st.session_state.filtered_df is not None:
             'SELISIH_HARGA_PERSEN': '{:.2f}%'
         }).set_properties(
             **{'background-color': '#e8f5e9'},
-            subset=["BARANG_A", "BARANG_B"] # --- PERBAIKAN: Menggunakan petik dua ---
+            subset=["BARANG_A", "BARANG_B"]
         ).set_properties(
             **{'background-color': "#e3f2fd"},
-            subset=["HARGA_A", "HARGA_B"] # --- PERBAIKAN: Menggunakan petik dua ---
+            subset=["HARGA_A", "HARGA_B"]
         )
         
         st.dataframe(styled_df)
@@ -193,7 +193,8 @@ if st.session_state.filtered_df is not None:
                 
                 if not sj_df.empty:
                     if 'NAMABRG' in sj_df.columns:
-                        sj_filtered = sj_df[sj_df['NAMABRG'].str.contains(primary_item, case=False, na=False)]
+                        # --- PERBAIKAN: Menambahkan regex=False untuk pencarian teks biasa ---
+                        sj_filtered = sj_df[sj_df['NAMABRG'].str.contains(primary_item, case=False, na=False, regex=False)]
                         
                         if not sj_filtered.empty:
                             st.write(f"Ditemukan {len(sj_filtered)} riwayat pembelian:")
