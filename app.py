@@ -12,31 +12,24 @@ st.title("📊 Dashboard Penampil Database Konsistensi Harga")
 st.write("Aplikasi ini menampilkan hasil analisis kemiripan barang dari database yang sudah diproses.")
 
 # --- Informasi Spreadsheet (Database) ---
-SPREADSHEET_ID = "1_CXkB0wkdj3MC7YdewWdYDxns4iplsXF"
+SPREADSHEET_ID_DB = "1_CXkB0wkdj3MC7YdewWdYDxns4iplsXF"
+SPREADSHEET_ID_SJ = "1NcsaPVBVqlg6fcKHS2XYxkzyPNGiAaYc"
 
 # --- Fungsi untuk memuat data dari Google Sheets publik ---
 @st.cache_data(ttl=3600) # Cache data selama 1 jam
-def load_database(spreadsheet_id):
+def load_database(spreadsheet_id, gid):
     """
-    Fungsi untuk membaca database dari sheet publik Google Sheets.
+    Fungsi generik untuk membaca database dari sheet publik Google Sheets.
     """
-    # GID 0 biasanya adalah sheet pertama
-    url = f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}/export?format=csv&gid=1872490756"
+    url = f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}/export?format=csv&gid={gid}"
     try:
         df = pd.read_csv(url)
-        # Membersihkan nama kolom untuk kemudahan akses
-        df.columns = (
-            df.columns.str.strip()
-            .str.replace(' (%)', '_PERSEN', regex=False)
-            .str.replace(' ', '_')
-        )
-        # Memastikan tipe data numerik untuk kolom filter
-        df['SCORE'] = pd.to_numeric(df['SCORE'], errors='coerce')
-        df['SELISIH_HARGA_PERSEN'] = pd.to_numeric(df['SELISIH_HARGA_PERSEN'], errors='coerce')
-        df.dropna(subset=['SCORE', 'SELISIH_HARGA_PERSEN'], inplace=True)
+        # --- PERBAIKAN: Menghapus kolom 'Unnamed: 0' jika ada ---
+        if 'Unnamed: 0' in df.columns:
+            df = df.drop(columns=['Unnamed: 0'])
         return df
     except Exception as e:
-        st.error(f"Gagal memuat database dari Google Sheet. Pastikan link publik dan formatnya benar. Error: {e}")
+        st.error(f"Gagal memuat data dari Google Sheet (ID: {spreadsheet_id}). Pastikan link publik dan formatnya benar. Error: {e}")
         return pd.DataFrame()
 
 # --- Fungsi untuk menyorot perbedaan teks ---
@@ -65,13 +58,21 @@ if 'filtered_df' not in st.session_state:
     st.session_state.filtered_df = None
 
 # --- Memuat Database ---
-db_df = load_database(SPREADSHEET_ID)
-
+db_df = load_database(SPREADSHEET_ID_DB, gid="1872490756")
 if not db_df.empty:
-    # --- Sidebar Filters ---
-    st.sidebar.header("🔍 Filter Data")
-    
-    # --- PEMBARUAN: Mengganti radio button dengan selectbox (dropdown) ---
+    # Membersihkan nama kolom untuk kemudahan akses
+    db_df.columns = (
+        db_df.columns.str.strip()
+        .str.replace(' (%)', '_PERSEN', regex=False)
+        .str.replace(' ', '_')
+    )
+    db_df['SCORE'] = pd.to_numeric(db_df['SCORE'], errors='coerce')
+    db_df['SELISIH_HARGA_PERSEN'] = pd.to_numeric(db_df['SELISIH_HARGA_PERSEN'], errors='coerce')
+    db_df.dropna(subset=['SCORE', 'SELISIH_HARGA_PERSEN'], inplace=True)
+
+# --- Sidebar Filters ---
+st.sidebar.header("🔍 Filter Data")
+if not db_df.empty:
     score_filter_option = st.sidebar.selectbox(
         "Filter Kemiripan SCORE:",
         ('Tampilkan Semua (>= 90%)', 'Hampir Identik (>= 95%)', 'Sangat Mirip (Skor 100)')
@@ -90,7 +91,6 @@ if not db_df.empty:
             st.sidebar.warning("Mohon pilih setidaknya satu kategori.")
             st.session_state.filtered_df = pd.DataFrame(columns=db_df.columns) # Simpan dataframe kosong
         else:
-            # Menentukan kondisi filter skor berdasarkan pilihan dropdown
             if score_filter_option == 'Tampilkan Semua (>= 90%)':
                 score_condition = (db_df['SCORE'] >= 90)
             elif score_filter_option == 'Hampir Identik (>= 95%)':
@@ -110,44 +110,47 @@ if not db_df.empty:
             
             filtered_df = filtered_df.sort_values(by="SCORE", ascending=False).reset_index(drop=True)
             st.session_state.filtered_df = filtered_df # Simpan hasil filter ke session state
-    
-    # --- Menampilkan hasil HANYA jika sudah difilter ---
-    if st.session_state.filtered_df is not None:
-        filtered_df = st.session_state.filtered_df
+
+# --- Menampilkan hasil HANYA jika sudah difilter ---
+if st.session_state.filtered_df is not None:
+    filtered_df = st.session_state.filtered_df
+    st.markdown("---")
+    st.header("📋 Hasil Filter")
+
+    if not filtered_df.empty:
+        st.write(f"Menampilkan **100 baris teratas** dari **{len(filtered_df)}** total pasangan yang cocok dengan filter.")
+        display_df_limited = filtered_df.head(100)
+        
+        display_df = display_df_limited[[
+            "SCORE", "SELISIH_HARGA_PERSEN", "BARANG_A", "HARGA_A", "SATUAN", "KODE_A", "KATEGORI_A",
+            "BARANG_B", "HARGA_B", "KODE_B", "KATEGORI_B"
+        ]]
+
+        styled_df = display_df.style.format({
+            'HARGA_A': "Rp {:,.0f}",
+            'HARGA_B': "Rp {:,.0f}",
+            'SCORE': '{:.2f}',
+            'SELISIH_HARGA_PERSEN': '{:.2f}%'
+        }).set_properties(
+            **{'background-color': '#e8f5e9'},
+            subset=["BARANG_A", "BARANG_B"] # --- PERBAIKAN: Menggunakan petik dua ---
+        ).set_properties(
+            **{'background-color': "#e3f2fd"},
+            subset=["HARGA_A", "HARGA_B"] # --- PERBAIKAN: Menggunakan petik dua ---
+        )
+        
+        st.dataframe(styled_df)
+
         st.markdown("---")
-        st.header("📋 Hasil Filter")
-    
-        if not filtered_df.empty:
-            st.write(f"Menampilkan **100 baris teratas** dari **{len(filtered_df)}** total pasangan yang cocok dengan filter.")
-            display_df_limited = filtered_df.head(100)
-            
-            display_df = display_df_limited[[
-                "SCORE", "SELISIH_HARGA_PERSEN", "BARANG_A", "HARGA_A", "SATUAN", "KODE_A", "KATEGORI_A",
-                "BARANG_B", "HARGA_B", "KODE_B", "KATEGORI_B"
-            ]]
 
-            styled_df = display_df.style.format({
-                'HARGA_A': "Rp {:,.0f}",
-                'HARGA_B': "Rp {:,.0f}",
-                'SCORE': '{:.2f}',
-                'SELISIH_HARGA_PERSEN': '{:.2f}%'
-            }).set_properties(
-                **{'background-color': '#e8f5e9'},
-                subset=['BARANG_A', 'BARANG_B']
-            ).set_properties(
-                **{'background-color': "#e3f2fd"},
-                subset=['HARGA_A', 'HARGA_B']
-            )
-            
-            st.dataframe(styled_df)
+        st.header("🔬 Perbandingan Detail")
+        unique_names = pd.concat([filtered_df['BARANG_A'], filtered_df['BARANG_B']]).unique()
+        primary_item = st.selectbox("Pilih barang utama untuk dianalisis:", unique_names)
 
-            st.markdown("---")
+        if primary_item:
+            tab1, tab2 = st.tabs(["Perbandingan Side-by-Side", "Tinjau Data SJ"])
 
-            st.header("🔬 Perbandingan Detail")
-            unique_names = pd.concat([filtered_df['BARANG_A'], filtered_df['BARANG_B']]).unique()
-            primary_item = st.selectbox("Pilih barang utama untuk melihat semua pasangannya yang mirip:", unique_names)
-
-            if primary_item:
+            with tab1:
                 related_pairs = filtered_df[
                     (filtered_df['BARANG_A'] == primary_item) | 
                     (filtered_df['BARANG_B'] == primary_item)
@@ -166,8 +169,8 @@ if not db_df.empty:
                     highlighted_a, highlighted_b = highlight_diff(item_a_name, item_b_name)
                     
                     st.markdown("---")
-                    col1, col2 = st.columns(2)
-                    with col1:
+                    col1_tab1, col2_tab1 = st.columns(2)
+                    with col1_tab1:
                         st.markdown("#### Barang Utama")
                         st.markdown(f"**Nama:** {highlighted_a}", unsafe_allow_html=True)
                         st.markdown(f"**Harga:** Rp {int(item_a_price):,}".replace(',', '.'))
@@ -175,16 +178,37 @@ if not db_df.empty:
                         st.markdown(f"**Kode:** {item_a_code}")
                         st.markdown(f"**Kategori:** {item_a_cat}")
                     
-                    with col2:
+                    with col2_tab1:
                         st.markdown("#### Pasangan Mirip")
                         st.markdown(f"**Nama:** {highlighted_b}", unsafe_allow_html=True)
                         st.markdown(f"**Harga:** Rp {int(item_b_price):,}".replace(',', '.'))
                         st.markdown(f"**Satuan:** {item_b_unit}")
                         st.markdown(f"**Kode:** {item_b_code}")
                         st.markdown(f"**Kategori:** {item_b_cat}")
-        else:
-            st.warning("Tidak ada data yang cocok dengan filter Anda.")
+            
+            with tab2:
+                st.subheader(f"Mencari riwayat pembelian untuk: {primary_item}")
+                with st.spinner("Memuat data riwayat pembelian..."):
+                    sj_df = load_database(SPREADSHEET_ID_SJ, gid="1615588726") 
+                
+                if not sj_df.empty:
+                    if 'NAMABRG' in sj_df.columns:
+                        sj_filtered = sj_df[sj_df['NAMABRG'].str.contains(primary_item, case=False, na=False)]
+                        
+                        if not sj_filtered.empty:
+                            st.write(f"Ditemukan {len(sj_filtered)} riwayat pembelian:")
+                            st.dataframe(sj_filtered)
+                        else:
+                            st.warning(f"Tidak ditemukan riwayat pembelian untuk '{primary_item}' di Data SJ.")
+                    else:
+                        st.error("Kolom 'NAMABRG' tidak ditemukan di spreadsheet Data SJ.")
+                else:
+                    st.error("Gagal memuat Data SJ.")
+
     else:
-        st.info("Pilih filter di sidebar dan klik 'START' untuk memulai.")
+        st.warning("Tidak ada data yang cocok dengan filter Anda.")
 else:
-    st.info("Memuat database... Jika pesan ini tidak hilang, periksa kembali link spreadsheet dan pastikan sheet pertama berisi data yang benar.")
+    st.info("Pilih filter di sidebar dan klik 'START' untuk memulai.")
+
+if db_df.empty:
+    st.error("Database utama tidak dapat dimuat. Aplikasi tidak dapat berjalan.")
