@@ -196,19 +196,14 @@ selected_categories = st.sidebar.multiselect(
     help="Anda bisa memilih lebih dari satu kategori."
 )
 
-ignore_units = st.sidebar.checkbox(
-    "Abaikan perbedaan SATUAN", 
-    value=True, 
-    help="Jika dicentang, perbandingan akan dilakukan ke semua barang. Jika tidak, perbandingan hanya dilakukan pada barang dengan SATUAN yang sama."
-)
-
 st.sidebar.header("🔍 Filter Analisis")
 
+# --- PEMBARUAN: Mengganti nama mode analisis ---
 analysis_mode = st.sidebar.radio(
     "Pilih Mode Analisis:",
-    ('Menyeluruh', 'Cepat'),
-    index=0, # Default ke Menyeluruh
-    help="**Menyeluruh:** Akurasi tertinggi, waktu proses lebih lama. **Cepat:** Performa lebih cepat, cocok untuk analisis awal."
+    ('Filter Ketat', 'Filter Cepat'),
+    index=0, # Default ke Filter Ketat
+    help="**Filter Ketat:** Akurasi tertinggi, waktu proses lebih lama. **Filter Cepat:** Performa lebih cepat, cocok untuk analisis awal."
 )
 
 threshold = st.sidebar.slider("Filter Kemiripan Nama (%)", 70, 100, 85)
@@ -241,21 +236,18 @@ if st.sidebar.button("Proses Data"):
 
                 df = df.reset_index(drop=True)
                 
-                num_permutations = 128 if analysis_mode == 'Menyeluruh' else 64
+                # Menentukan parameter berdasarkan mode yang dipilih
+                num_permutations = 128 if analysis_mode == 'Filter Ketat' else 64
                 
                 all_pairs = []
-                if ignore_units:
-                    with st.spinner(f"Menganalisis semua data (Mode: {analysis_mode})..."):
-                        all_pairs = run_lsh_analysis(df, threshold, num_perm=num_permutations)
-                else:
-                    unique_units = df['SATUAN'].unique()
-                    progress_bar = st.progress(0, text=f"Menganalisis per kelompok satuan (Mode: {analysis_mode})...")
-                    for i, unit in enumerate(unique_units):
-                        progress_bar.progress((i + 1) / len(unique_units), text=f"Menganalisis satuan: {unit}...")
-                        df_group = df[df['SATUAN'] == unit]
-                        group_pairs = run_lsh_analysis(df_group, threshold, num_perm=num_permutations)
-                        all_pairs.extend(group_pairs)
-                    progress_bar.empty()
+                unique_units = df['SATUAN'].unique()
+                progress_bar = st.progress(0, text=f"Menganalisis per kelompok satuan (Mode: {analysis_mode})...")
+                for i, unit in enumerate(unique_units):
+                    progress_bar.progress((i + 1) / len(unique_units), text=f"Menganalisis satuan: {unit}...")
+                    df_group = df[df['SATUAN'] == unit]
+                    group_pairs = run_lsh_analysis(df_group, threshold, num_perm=num_permutations)
+                    all_pairs.extend(group_pairs)
+                progress_bar.empty()
 
                 if all_pairs:
                     result = pd.DataFrame(all_pairs)
@@ -306,49 +298,44 @@ if st.session_state.analysis_result is not None:
         st.subheader("🔬 Perbandingan Detail")
 
         if not result.empty:
-            # --- PEMBARUAN: Mengganti selectbox dengan text_input untuk performa ---
-            primary_item = st.text_input("Ketik nama barang utama untuk melihat semua pasangannya yang mirip:")
+            unique_names = pd.concat([result['NAMABRG_A'], result['NAMABRG_B']]).unique()
+            primary_item = st.selectbox("Pilih barang utama untuk melihat semua pasangannya yang mirip:", unique_names)
 
             if primary_item:
-                # Filter berdasarkan input teks yang tidak case-sensitive
                 related_pairs = result[
-                    (result['NAMABRG_A'].str.contains(primary_item, case=False, na=False)) | 
-                    (result['NAMABRG_B'].str.contains(primary_item, case=False, na=False))
+                    (result['NAMABRG_A'] == primary_item) | 
+                    (result['NAMABRG_B'] == primary_item)
                 ]
 
-                if not related_pairs.empty:
-                    st.write(f"Menampilkan {len(related_pairs)} pasangan yang mirip dengan **'{primary_item}'**:")
+                st.write(f"Menampilkan {len(related_pairs)} pasangan yang mirip dengan **{primary_item}**:")
 
-                    for _, row in related_pairs.iterrows():
-                        # Logika ini memastikan barang utama selalu di kiri
-                        if primary_item.lower() in row['NAMABRG_A'].lower():
-                            item_a_name, item_a_price, item_a_unit, item_a_code = row['NAMABRG_A'], row['HARGA_A'], row['SATUAN_A'], row['KODE_A']
-                            item_b_name, item_b_price, item_b_unit, item_b_code = row['NAMABRG_B'], row['HARGA_B'], row['SATUAN_B'], row['KODE_B']
-                        else:
-                            item_a_name, item_a_price, item_a_unit, item_a_code = row['NAMABRG_B'], row['HARGA_B'], row['SATUAN_B'], row['KODE_B']
-                            item_b_name, item_b_price, item_b_unit, item_b_code = row['NAMABRG_A'], row['HARGA_A'], row['SATUAN_A'], row['KODE_A']
+                for _, row in related_pairs.iterrows():
+                    if row['NAMABRG_A'] == primary_item:
+                        item_a_name, item_a_price, item_a_unit, item_a_code = row['NAMABRG_A'], row['HARGA_A'], row['SATUAN_A'], row['KODE_A']
+                        item_b_name, item_b_price, item_b_unit, item_b_code = row['NAMABRG_B'], row['HARGA_B'], row['SATUAN_B'], row['KODE_B']
+                    else:
+                        item_a_name, item_a_price, item_a_unit, item_a_code = row['NAMABRG_B'], row['HARGA_B'], row['SATUAN_B'], row['KODE_B']
+                        item_b_name, item_b_price, item_b_unit, item_b_code = row['NAMABRG_A'], row['HARGA_A'], row['SATUAN_A'], row['KODE_A']
 
-                        highlighted_a, highlighted_b = highlight_diff(item_a_name, item_b_name)
-                        
-                        st.markdown("---")
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            st.markdown("#### Barang Utama")
-                            st.markdown(f"**Nama:** {highlighted_a}", unsafe_allow_html=True)
-                            st.markdown(f"**Harga:** Rp {int(item_a_price):,}".replace(',', '.'))
-                            st.markdown(f"**Satuan:** {item_a_unit}")
-                            st.markdown(f"**Kode:** {item_a_code}")
-                        
-                        with col2:
-                            st.markdown("#### Pasangan Mirip")
-                            st.markdown(f"**Nama:** {highlighted_b}", unsafe_allow_html=True)
-                            st.markdown(f"**Harga:** Rp {int(item_b_price):,}".replace(',', '.'))
-                            st.markdown(f"**Satuan:** {item_b_unit}")
-                            st.markdown(f"**Kode:** {item_b_code}")
-                else:
-                    st.warning(f"Tidak ada pasangan yang ditemukan untuk '{primary_item}'.")
+                    highlighted_a, highlighted_b = highlight_diff(item_a_name, item_b_name)
+                    
+                    st.markdown("---")
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.markdown("#### Barang Utama")
+                        st.markdown(f"**Nama:** {highlighted_a}", unsafe_allow_html=True)
+                        st.markdown(f"**Harga:** Rp {int(item_a_price):,}".replace(',', '.'))
+                        st.markdown(f"**Satuan:** {item_a_unit}")
+                        st.markdown(f"**Kode:** {item_a_code}")
+                    
+                    with col2:
+                        st.markdown("#### Pasangan Mirip")
+                        st.markdown(f"**Nama:** {highlighted_b}", unsafe_allow_html=True)
+                        st.markdown(f"**Harga:** Rp {int(item_b_price):,}".replace(',', '.'))
+                        st.markdown(f"**Satuan:** {item_b_unit}")
+                        st.markdown(f"**Kode:** {item_b_code}")
         else:
-            st.info("Tabel hasil kosong.")
+            st.warning("Tidak ada hasil yang cocok dengan pencarian Anda untuk dibandingkan.")
 
     else:
         st.info(f"Tidak ditemukan pasangan nama barang yang mirip dengan skor di atas {threshold}.")
