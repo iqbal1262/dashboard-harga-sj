@@ -116,7 +116,7 @@ if not db_df.empty:
 
 # --- Fitur Cek Barang Baru ---
 st.sidebar.markdown("---")
-st.sidebar.header("🧪 Cek Barang Baru")
+st.sidebar.header("🧪 Cek Histori Nama Barang")
 new_item_name = st.sidebar.text_input("Masukkan nama barang baru:")
 if st.sidebar.button("Cek Kemiripan"):
     if not new_item_name:
@@ -304,7 +304,7 @@ else:
 # --- Menampilkan Hasil Cek Barang Baru ---
 if st.session_state.new_item_results is not None:
     st.markdown("---")
-    st.header("🔎 Hasil Pengecekan Barang Baru")
+    st.header("🔎 Hasil Pengecekan Histori Nama Barang")
     if not st.session_state.new_item_results.empty:
         st.write(f"Barang yang mirip dengan '{new_item_name}':")
         
