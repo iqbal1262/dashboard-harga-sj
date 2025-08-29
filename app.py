@@ -4,6 +4,8 @@ import numpy as np
 import difflib
 import requests
 from io import StringIO
+from rapidfuzz import process, fuzz
+import re
 
 # --- Konfigurasi Halaman Streamlit ---
 st.set_page_config(layout="wide", page_title="Dashboard Hasil Analisis Harga")
@@ -24,7 +26,7 @@ def load_database(spreadsheet_id, gid):
     url = f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}/export?format=csv&gid={gid}"
     try:
         df = pd.read_csv(url)
-        # --- PERBAIKAN: Menghapus kolom 'Unnamed: 0' jika ada ---
+        # Menghapus kolom 'Unnamed: 0' jika ada
         if 'Unnamed: 0' in df.columns:
             df = df.drop(columns=['Unnamed: 0'])
         return df
@@ -56,6 +58,8 @@ def highlight_diff(text1, text2):
 # --- Inisialisasi Session State ---
 if 'filtered_df' not in st.session_state:
     st.session_state.filtered_df = None
+if 'new_item_results' not in st.session_state:
+    st.session_state.new_item_results = None
 
 # --- Memuat Database ---
 db_df = load_database(SPREADSHEET_ID_DB, gid="1872490756")
@@ -85,11 +89,10 @@ if not db_df.empty:
         default=[] # Default ke tidak ada kategori yang dipilih
     )
 
-    # --- Tombol START untuk memulai filter ---
     if st.sidebar.button("START"):
         if not selected_categories:
             st.sidebar.warning("Mohon pilih setidaknya satu kategori.")
-            st.session_state.filtered_df = pd.DataFrame(columns=db_df.columns) # Simpan dataframe kosong
+            st.session_state.filtered_df = pd.DataFrame(columns=db_df.columns)
         else:
             if score_filter_option == 'Tampilkan Semua (>= 90%)':
                 score_condition = (db_df['SCORE'] >= 90)
@@ -109,7 +112,41 @@ if not db_df.empty:
             ]
             
             filtered_df = filtered_df.sort_values(by="SCORE", ascending=False).reset_index(drop=True)
-            st.session_state.filtered_df = filtered_df # Simpan hasil filter ke session state
+            st.session_state.filtered_df = filtered_df
+
+# --- Fitur Cek Barang Baru ---
+st.sidebar.markdown("---")
+st.sidebar.header("🧪 Cek Barang Baru")
+new_item_name = st.sidebar.text_input("Masukkan nama barang baru:")
+if st.sidebar.button("Cek Kemiripan"):
+    if not new_item_name:
+        st.sidebar.warning("Nama barang tidak boleh kosong.")
+    else:
+        with st.spinner("Memuat data master SJ dan mencari kemiripan..."):
+            sj_df = load_database(SPREADSHEET_ID_SJ, gid="1615588726")
+            if not sj_df.empty and 'NAMABRG' in sj_df.columns:
+                master_list_df = sj_df.drop_duplicates(subset=['NAMABRG']).reset_index(drop=True)
+                choices = master_list_df['NAMABRG'].tolist()
+                
+                matches = process.extract(new_item_name, choices, scorer=fuzz.ratio, limit=10, score_cutoff=50)
+                
+                match_results = []
+                for match_name, score, index in matches:
+                    match_details = master_list_df.iloc[index]
+                    match_results.append({
+                        "Barang Mirip di Data SJ": match_name,
+                        "Skor Kemiripan (%)": score,
+                        "Kode": match_details.get("KODEBARANG", "N/A"),
+                        "Kategori": match_details.get("KATEGORI", "N/A")
+                    })
+                
+                if match_results:
+                    st.session_state.new_item_results = pd.DataFrame(match_results)
+                else:
+                    st.session_state.new_item_results = pd.DataFrame()
+            else:
+                st.sidebar.error("Gagal memuat atau memproses Data SJ.")
+                st.session_state.new_item_results = None
 
 # --- Menampilkan hasil HANYA jika sudah difilter ---
 if st.session_state.filtered_df is not None:
@@ -155,9 +192,7 @@ if st.session_state.filtered_df is not None:
                     (filtered_df['BARANG_A'] == primary_item) | 
                     (filtered_df['BARANG_B'] == primary_item)
                 ]
-
                 st.write(f"Menampilkan {len(related_pairs)} pasangan yang mirip dengan **{primary_item}**:")
-
                 for _, row in related_pairs.iterrows():
                     if row['BARANG_A'] == primary_item:
                         item_a_name, item_a_price, item_a_unit, item_a_code, item_a_cat = row['BARANG_A'], row['HARGA_A'], row['SATUAN'], row['KODE_A'], row['KATEGORI_A']
@@ -188,28 +223,51 @@ if st.session_state.filtered_df is not None:
             
             with tab2:
                 st.subheader(f"Mencari riwayat pembelian untuk: {primary_item}")
+                include_similar = st.checkbox("Sertakan semua barang yang mirip dalam pencarian riwayat (Skor >= 95%)")
+
                 with st.spinner("Memuat data riwayat pembelian..."):
                     sj_df = load_database(SPREADSHEET_ID_SJ, gid="1615588726") 
                 
-                if not sj_df.empty:
-                    if 'NAMABRG' in sj_df.columns:
-                        # --- PERBAIKAN: Menambahkan regex=False untuk pencarian teks biasa ---
-                        sj_filtered = sj_df[sj_df['NAMABRG'].str.contains(primary_item, case=False, na=False, regex=False)]
+                if not sj_df.empty and 'NAMABRG' in sj_df.columns:
+                    search_terms = [primary_item]
+                    if include_similar:
+                        related_pairs = filtered_df[
+                            (filtered_df['BARANG_A'] == primary_item) | 
+                            (filtered_df['BARANG_B'] == primary_item)
+                        ]
+                        # --- PEMBARUAN: Hanya menyertakan barang dengan skor >= 95 ---
+                        high_score_pairs = related_pairs[related_pairs['SCORE'] >= 95]
                         
-                        if not sj_filtered.empty:
-                            st.write(f"Ditemukan {len(sj_filtered)} riwayat pembelian:")
-                            st.dataframe(sj_filtered)
-                        else:
-                            st.warning(f"Tidak ditemukan riwayat pembelian untuk '{primary_item}' di Data SJ.")
-                    else:
-                        st.error("Kolom 'NAMABRG' tidak ditemukan di spreadsheet Data SJ.")
-                else:
-                    st.error("Gagal memuat Data SJ.")
+                        if not high_score_pairs.empty:
+                            similar_items_a = high_score_pairs['BARANG_A'].tolist()
+                            similar_items_b = high_score_pairs['BARANG_B'].tolist()
+                            search_terms = list(set([primary_item] + similar_items_a + similar_items_b))
 
+                    # Membuat pola pencarian yang aman
+                    search_pattern = '|'.join([re.escape(term) for term in search_terms])
+                    sj_filtered = sj_df[sj_df['NAMABRG'].str.contains(search_pattern, case=False, na=False, regex=True)]
+                    
+                    if not sj_filtered.empty:
+                        st.write(f"Ditemukan {len(sj_filtered)} riwayat pembelian yang cocok:")
+                        st.dataframe(sj_filtered)
+                    else:
+                        st.warning(f"Tidak ditemukan riwayat pembelian yang cocok di Data SJ.")
+                else:
+                    st.error("Gagal memuat atau memproses Data SJ.")
     else:
         st.warning("Tidak ada data yang cocok dengan filter Anda.")
 else:
     st.info("Pilih filter di sidebar dan klik 'START' untuk memulai.")
+
+# --- Menampilkan Hasil Cek Barang Baru ---
+if st.session_state.new_item_results is not None:
+    st.markdown("---")
+    st.header("✨ Hasil Pengecekan Barang Baru")
+    if not st.session_state.new_item_results.empty:
+        st.write(f"Barang yang mirip dengan '{new_item_name}':")
+        st.dataframe(st.session_state.new_item_results.style.format({'Skor Kemiripan (%)': '{:.2f}'}))
+    else:
+        st.success(f"Tidak ditemukan barang yang mirip dengan '{new_item_name}' (di atas 50%). Barang ini kemungkinan besar unik.")
 
 if db_df.empty:
     st.error("Database utama tidak dapat dimuat. Aplikasi tidak dapat berjalan.")
