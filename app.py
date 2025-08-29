@@ -124,28 +124,72 @@ if st.sidebar.button("Cek Kemiripan"):
     else:
         with st.spinner("Memuat data master SJ dan mencari kemiripan..."):
             sj_df = load_database(SPREADSHEET_ID_SJ, gid="1615588726")
-            if not sj_df.empty and 'NAMABRG' in sj_df.columns:
-                master_list_df = sj_df.drop_duplicates(subset=['NAMABRG']).reset_index(drop=True)
-                choices = master_list_df['NAMABRG'].tolist()
+            if not sj_df.empty and 'NAMABRG' in sj_df.columns and 'SJ_CREATED_ON' in sj_df.columns:
+                sj_df['SJ_CREATED_ON'] = pd.to_datetime(sj_df['SJ_CREATED_ON'], errors='coerce')
                 
-                matches = process.extract(new_item_name, choices, scorer=fuzz.ratio, limit=10, score_cutoff=50)
+                # --- PERBAIKAN: Pembersihan data harga yang lebih kuat ---
+                if 'HARGARATA' in sj_df.columns:
+                    # Menghapus semua karakter non-digit (termasuk 'Rp' dan '.')
+                    cleaned_harga = sj_df['HARGARATA'].astype(str).str.replace(r'[^\d]', '', regex=True)
+                    sj_df['HARGARATA'] = pd.to_numeric(cleaned_harga, errors='coerce').fillna(0)
+                
+                sj_df_sorted = sj_df.sort_values(by='SJ_CREATED_ON', ascending=False)
+                master_list_df = sj_df_sorted.groupby(['NAMABRG', 'KODEBARANG']).agg(
+                    HARGARATA=('HARGARATA', 'first'),
+                    KATEGORI=('KATEGORI', 'first'),
+                    Permintaan_Terakhir=('SJ_CREATED_ON', 'max'),
+                    Permintaan_Awal=('SJ_CREATED_ON', 'min')
+                ).reset_index()
+
+                choices = master_list_df['NAMABRG'].tolist()
+                query_name = new_item_name.upper()
+                
+                initial_matches = process.extract(query_name, choices, scorer=fuzz.ratio, limit=10, score_cutoff=50)
                 
                 match_results = []
-                for match_name, score, index in matches:
-                    match_details = master_list_df.iloc[index]
-                    match_results.append({
-                        "Barang Mirip di Data SJ": match_name,
-                        "Skor Kemiripan (%)": score,
-                        "Kode": match_details.get("KODEBARANG", "N/A"),
-                        "Kategori": match_details.get("KATEGORI", "N/A")
-                    })
-                
+                processed_items = set() 
+
+                initial_names = {match[0] for match in initial_matches}
+                names_to_process_queue = list(initial_names)
+
+                while names_to_process_queue:
+                    current_name = names_to_process_queue.pop(0)
+                    
+                    variations = master_list_df[master_list_df['NAMABRG'] == current_name]
+
+                    for _, detail_row in variations.iterrows():
+                        item_tuple = (detail_row['NAMABRG'], detail_row['KODEBARANG'])
+                        if item_tuple in processed_items:
+                            continue
+                        processed_items.add(item_tuple)
+                        
+                        score = fuzz.ratio(query_name, detail_row['NAMABRG'])
+                        match_results.append({
+                            "Barang Mirip di Data SJ": detail_row['NAMABRG'],
+                            "Skor Kemiripan (%)": score,
+                            "Harga Rata-rata": detail_row.get("HARGARATA", 0),
+                            "Kode": detail_row.get("KODEBARANG", "N/A"),
+                            "Kategori": detail_row.get("KATEGORI", "N/A"),
+                            "Permintaan Awal": detail_row.get("Permintaan_Awal", pd.NaT),
+                            "Permintaan Terakhir": detail_row.get("Permintaan_Terakhir", pd.NaT) 
+                        })
+
+                    related_a = db_df[db_df['BARANG_A'] == current_name]['BARANG_B'].tolist()
+                    related_b = db_df[db_df['BARANG_B'] == current_name]['BARANG_A'].tolist()
+                    all_related = set(related_a + related_b)
+                    
+                    for related_name in all_related:
+                        if not any(related_name in item for item in processed_items):
+                             names_to_process_queue.append(related_name)
+
                 if match_results:
-                    st.session_state.new_item_results = pd.DataFrame(match_results)
+                    results_df = pd.DataFrame(match_results).drop_duplicates(subset=['Barang Mirip di Data SJ', 'Kode'])
+                    results_df = results_df.sort_values(by="Skor Kemiripan (%)", ascending=False)
+                    st.session_state.new_item_results = results_df
                 else:
                     st.session_state.new_item_results = pd.DataFrame()
             else:
-                st.sidebar.error("Gagal memuat atau memproses Data SJ.")
+                st.sidebar.error("Gagal memuat atau memproses Data SJ. Pastikan kolom 'NAMABRG' dan 'SJ_CREATED_ON' ada.")
                 st.session_state.new_item_results = None
 
 # --- Menampilkan hasil HANYA jika sudah difilter ---
@@ -235,7 +279,6 @@ if st.session_state.filtered_df is not None:
                             (filtered_df['BARANG_A'] == primary_item) | 
                             (filtered_df['BARANG_B'] == primary_item)
                         ]
-                        # --- PEMBARUAN: Hanya menyertakan barang dengan skor >= 95 ---
                         high_score_pairs = related_pairs[related_pairs['SCORE'] >= 95]
                         
                         if not high_score_pairs.empty:
@@ -243,7 +286,6 @@ if st.session_state.filtered_df is not None:
                             similar_items_b = high_score_pairs['BARANG_B'].tolist()
                             search_terms = list(set([primary_item] + similar_items_a + similar_items_b))
 
-                    # Membuat pola pencarian yang aman
                     search_pattern = '|'.join([re.escape(term) for term in search_terms])
                     sj_filtered = sj_df[sj_df['NAMABRG'].str.contains(search_pattern, case=False, na=False, regex=True)]
                     
@@ -262,12 +304,43 @@ else:
 # --- Menampilkan Hasil Cek Barang Baru ---
 if st.session_state.new_item_results is not None:
     st.markdown("---")
-    st.header("✨ Hasil Pengecekan Barang Baru")
+    st.header("🔎 Hasil Pengecekan Barang Baru")
     if not st.session_state.new_item_results.empty:
         st.write(f"Barang yang mirip dengan '{new_item_name}':")
-        st.dataframe(st.session_state.new_item_results.style.format({'Skor Kemiripan (%)': '{:.2f}'}))
+        
+        # --- PERBAIKAN: Membuat salinan untuk diformat, agar tidak merusak session state ---
+        results_df_display = st.session_state.new_item_results.copy()
+        
+        results_df_display["Harga Rata-rata"] = results_df_display["Harga Rata-rata"].apply(lambda x: f"Rp {int(x):,}".replace(',', '.'))
+
+        ordered_columns = [
+            "Skor Kemiripan (%)", 
+            "Barang Mirip di Data SJ", 
+            "Kode", 
+            "Kategori", 
+            "Harga Rata-rata",
+            "Permintaan Awal",
+            "Permintaan Terakhir"
+        ]
+        display_results_df = results_df_display[ordered_columns]
+
+        st.dataframe(
+            display_results_df,
+            column_config={
+                "Skor Kemiripan (%)": st.column_config.NumberColumn("Skor (%)",format="%.2f",width="small"),
+                "Barang Mirip di Data SJ": st.column_config.TextColumn("Barang Mirip",width="large"),
+                "Kode": st.column_config.TextColumn("Kode",width="small"),
+                "Kategori": st.column_config.TextColumn("Kategori",width="small"),
+                 "Harga Rata-rata": st.column_config.TextColumn("Harga Rata-rata",width="small"),
+                "Permintaan Awal": st.column_config.DateColumn("Permintaan Awal",format="DD-MM-YYYY",width="small"),
+                "Permintaan Terakhir": st.column_config.DateColumn("Permintaan Terakhir",format="DD-MM-YYYY",width="small")
+            },
+            use_container_width=True,
+            hide_index=True
+        )
     else:
         st.success(f"Tidak ditemukan barang yang mirip dengan '{new_item_name}' (di atas 50%). Barang ini kemungkinan besar unik.")
 
 if db_df.empty:
     st.error("Database utama tidak dapat dimuat. Aplikasi tidak dapat berjalan.")
+
