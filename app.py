@@ -197,10 +197,11 @@ if st.session_state.filtered_df is not None:
     st.header("📋 Hasil Filter")
 
     if not filtered_df.empty:
-        st.write(f"Menampilkan **100 baris teratas** dari **{len(filtered_df)}** total pasangan yang cocok dengan filter.")
-        display_df_limited = filtered_df.head(100)
+        # --- PERUBAHAN: Menghapus batasan 100 baris teratas ---
+        st.write(f"Menampilkan **{len(filtered_df)}** total pasangan yang cocok dengan filter.")
+        # Perhatian: Menampilkan semua hasil (jika ribuan) dapat membuat aplikasi lambat.
         
-        display_df = display_df_limited[[
+        display_df = filtered_df[[
             "SCORE", "SELISIH_HARGA_PERSEN", "BARANG_A", "HARGA_A", "SATUAN", "KODE_A", "KATEGORI_A",
             "BARANG_B", "HARGA_B", "KODE_B", "KATEGORI_B"
         ]]
