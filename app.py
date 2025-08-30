@@ -89,13 +89,6 @@ if not db_df.empty:
         default=[] # Default ke tidak ada kategori yang dipilih
     )
 
-    # --- PEMBARUAN: Tambahkan opsi pengurutan ---
-    sort_order_option = st.sidebar.radio(
-        "Urutkan berdasarkan SCORE:",
-        ('Tertinggi ke Terendah', 'Terkecil ke Tertinggi'),
-        key='sort_order'
-    )
-
     if st.sidebar.button("START"):
         if not selected_categories:
             st.sidebar.warning("Mohon pilih setidaknya satu kategori.")
@@ -118,9 +111,8 @@ if not db_df.empty:
                 category_filter
             ]
             
-            # --- PEMBARUAN: Terapkan logika pengurutan ---
-            sort_ascending = (sort_order_option == 'Terkecil ke Tertinggi')
-            filtered_df = filtered_df.sort_values(by="SCORE", ascending=sort_ascending).reset_index(drop=True)
+            # Default sort order
+            filtered_df = filtered_df.sort_values(by="SCORE", ascending=False).reset_index(drop=True)
             st.session_state.filtered_df = filtered_df
 
 # --- Fitur Cek Barang Baru ---
@@ -206,20 +198,33 @@ if st.session_state.filtered_df is not None:
     st.header("📋 Hasil Filter")
 
     if not filtered_df.empty:
-        # --- PEMBARUAN: Tambahkan dropdown untuk memilih jumlah tampilan ---
-        display_limit_option = st.selectbox(
-            "Tampilkan jumlah pasangan:",
-            ('100 Teratas', '200 Teratas', 'Seluruh Pasangan')
-        )
+        # --- PEMBARUAN: Pindahkan opsi tampilan ke area utama ---
+        col1, col2 = st.columns(2)
+        with col1:
+            display_limit_option = st.selectbox(
+                "Tampilkan jumlah pasangan:",
+                ('100 Teratas', '200 Teratas', 'Seluruh Pasangan'),
+                key='display_limit'
+            )
+        with col2:
+            sort_order_option = st.selectbox(
+                "Urutkan berdasarkan SCORE:",
+                ('Tertinggi ke Terendah', 'Terkecil ke Tertinggi'),
+                key='sort_order'
+            )
+
+        # Terapkan pengurutan pada data yang sudah difilter
+        sort_ascending = (sort_order_option == 'Terkecil ke Tertinggi')
+        sorted_df = filtered_df.sort_values(by="SCORE", ascending=sort_ascending)
 
         if display_limit_option == '100 Teratas':
-            display_df_limited = filtered_df.head(100)
-            st.write(f"Menampilkan **{len(display_df_limited)} dari {len(filtered_df)}** total pasangan yang cocok.")
+            display_df_limited = sorted_df.head(100)
+            st.write(f"Menampilkan **{len(display_df_limited)} dari {len(sorted_df)}** total pasangan yang cocok.")
         elif display_limit_option == '200 Teratas':
-            display_df_limited = filtered_df.head(200)
-            st.write(f"Menampilkan **{len(display_df_limited)} dari {len(filtered_df)}** total pasangan yang cocok.")
+            display_df_limited = sorted_df.head(200)
+            st.write(f"Menampilkan **{len(display_df_limited)} dari {len(sorted_df)}** total pasangan yang cocok.")
         else: # Seluruh Pasangan
-            display_df_limited = filtered_df
+            display_df_limited = sorted_df
             st.warning("Perhatian: Menampilkan seluruh pasangan (jika ribuan) dapat memperlambat aplikasi.")
             st.write(f"Menampilkan **{len(display_df_limited)}** total pasangan yang cocok.")
         
