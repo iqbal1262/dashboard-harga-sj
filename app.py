@@ -89,6 +89,13 @@ if not db_df.empty:
         default=[] # Default ke tidak ada kategori yang dipilih
     )
 
+    # --- PEMBARUAN: Tambahkan opsi pengurutan ---
+    sort_order_option = st.sidebar.radio(
+        "Urutkan berdasarkan SCORE:",
+        ('Tertinggi ke Terendah', 'Terkecil ke Tertinggi'),
+        key='sort_order'
+    )
+
     if st.sidebar.button("START"):
         if not selected_categories:
             st.sidebar.warning("Mohon pilih setidaknya satu kategori.")
@@ -111,7 +118,9 @@ if not db_df.empty:
                 category_filter
             ]
             
-            filtered_df = filtered_df.sort_values(by="SCORE", ascending=False).reset_index(drop=True)
+            # --- PEMBARUAN: Terapkan logika pengurutan ---
+            sort_ascending = (sort_order_option == 'Terkecil ke Tertinggi')
+            filtered_df = filtered_df.sort_values(by="SCORE", ascending=sort_ascending).reset_index(drop=True)
             st.session_state.filtered_df = filtered_df
 
 # --- Fitur Cek Barang Baru ---
