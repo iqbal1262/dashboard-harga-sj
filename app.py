@@ -197,11 +197,24 @@ if st.session_state.filtered_df is not None:
     st.header("📋 Hasil Filter")
 
     if not filtered_df.empty:
-        # --- PERUBAHAN: Menghapus batasan 100 baris teratas ---
-        st.write(f"Menampilkan **{len(filtered_df)}** total pasangan yang cocok dengan filter.")
-        # Perhatian: Menampilkan semua hasil (jika ribuan) dapat membuat aplikasi lambat.
+        # --- PEMBARUAN: Tambahkan dropdown untuk memilih jumlah tampilan ---
+        display_limit_option = st.selectbox(
+            "Tampilkan jumlah pasangan:",
+            ('100 Teratas', '200 Teratas', 'Seluruh Pasangan')
+        )
+
+        if display_limit_option == '100 Teratas':
+            display_df_limited = filtered_df.head(100)
+            st.write(f"Menampilkan **{len(display_df_limited)} dari {len(filtered_df)}** total pasangan yang cocok.")
+        elif display_limit_option == '200 Teratas':
+            display_df_limited = filtered_df.head(200)
+            st.write(f"Menampilkan **{len(display_df_limited)} dari {len(filtered_df)}** total pasangan yang cocok.")
+        else: # Seluruh Pasangan
+            display_df_limited = filtered_df
+            st.warning("Perhatian: Menampilkan seluruh pasangan (jika ribuan) dapat memperlambat aplikasi.")
+            st.write(f"Menampilkan **{len(display_df_limited)}** total pasangan yang cocok.")
         
-        display_df = filtered_df[[
+        display_df = display_df_limited[[
             "SCORE", "SELISIH_HARGA_PERSEN", "BARANG_A", "HARGA_A", "SATUAN", "KODE_A", "KATEGORI_A",
             "BARANG_B", "HARGA_B", "KODE_B", "KATEGORI_B"
         ]]
@@ -224,7 +237,7 @@ if st.session_state.filtered_df is not None:
         st.markdown("---")
 
         st.header("🔬 Perbandingan Detail")
-        unique_names = pd.concat([filtered_df['BARANG_A'], filtered_df['BARANG_B']]).unique()
+        unique_names = pd.concat([display_df_limited['BARANG_A'], display_df_limited['BARANG_B']]).unique()
         primary_item = st.selectbox("Pilih barang utama untuk dianalisis:", unique_names)
 
         if primary_item:
