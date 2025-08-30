@@ -128,9 +128,6 @@ if st.sidebar.button("Cek Kemiripan"):
             if not sj_df.empty and 'NAMABRG' in sj_df.columns and 'SJ_CREATED_ON' in sj_df.columns:
                 sj_df['SJ_CREATED_ON'] = pd.to_datetime(sj_df['SJ_CREATED_ON'], errors='coerce')
                 
-                # Mempertahankan tipe data asli dari HARGARATA
-                
-                # --- PEMBARUAN: Logika pivot sekarang berdasarkan NAMABRG, KODEBARANG, dan SATUAN ---
                 sj_df_sorted = sj_df.sort_values(by='SJ_CREATED_ON', ascending=False)
                 master_list_df = sj_df_sorted.groupby(['NAMABRG', 'KODEBARANG', 'SATUAN']).agg(
                     HARGARATA=('HARGARATA', 'first'),
@@ -198,7 +195,6 @@ if st.session_state.filtered_df is not None:
     st.header("📋 Hasil Filter")
 
     if not filtered_df.empty:
-        # --- PEMBARUAN: Pindahkan opsi tampilan ke area utama ---
         col1, col2 = st.columns(2)
         with col1:
             display_limit_option = st.selectbox(
@@ -213,7 +209,6 @@ if st.session_state.filtered_df is not None:
                 key='sort_order'
             )
 
-        # Terapkan pengurutan pada data yang sudah difilter
         sort_ascending = (sort_order_option == 'Terkecil ke Tertinggi')
         sorted_df = filtered_df.sort_values(by="SCORE", ascending=sort_ascending)
 
@@ -223,7 +218,7 @@ if st.session_state.filtered_df is not None:
         elif display_limit_option == '200 Teratas':
             display_df_limited = sorted_df.head(200)
             st.write(f"Menampilkan **{len(display_df_limited)} dari {len(sorted_df)}** total pasangan yang cocok.")
-        else: # Seluruh Pasangan
+        else:
             display_df_limited = sorted_df
             st.warning("Perhatian: Menampilkan seluruh pasangan (jika ribuan) dapat memperlambat aplikasi.")
             st.write(f"Menampilkan **{len(display_df_limited)}** total pasangan yang cocok.")
@@ -247,85 +242,100 @@ if st.session_state.filtered_df is not None:
         )
         
         st.dataframe(styled_df)
-
-        st.markdown("---")
-
-        st.header("🔬 Perbandingan Detail")
-        unique_names = pd.concat([display_df_limited['BARANG_A'], display_df_limited['BARANG_B']]).unique()
-        primary_item = st.selectbox("Pilih barang utama untuk dianalisis:", unique_names)
-
-        if primary_item:
-            tab1, tab2 = st.tabs(["Perbandingan Side-by-Side", "Tinjau Data SJ"])
-
-            with tab1:
-                related_pairs = filtered_df[
-                    (filtered_df['BARANG_A'] == primary_item) | 
-                    (filtered_df['BARANG_B'] == primary_item)
-                ]
-                st.write(f"Menampilkan {len(related_pairs)} pasangan yang mirip dengan **{primary_item}**:")
-                for _, row in related_pairs.iterrows():
-                    if row['BARANG_A'] == primary_item:
-                        item_a_name, item_a_price, item_a_unit, item_a_code, item_a_cat = row['BARANG_A'], row['HARGA_A'], row['SATUAN'], row['KODE_A'], row['KATEGORI_A']
-                        item_b_name, item_b_price, item_b_unit, item_b_code, item_b_cat = row['BARANG_B'], row['HARGA_B'], row['SATUAN'], row['KODE_B'], row['KATEGORI_B']
-                    else:
-                        item_a_name, item_a_price, item_a_unit, item_a_code, item_a_cat = row['BARANG_B'], row['HARGA_B'], row['SATUAN'], row['KODE_B'], row['KATEGORI_B']
-                        item_b_name, item_b_price, item_b_unit, item_b_code, item_b_cat = row['BARANG_A'], row['HARGA_A'], row['SATUAN'], row['KODE_A'], row['KATEGORI_A']
-
-                    highlighted_a, highlighted_b = highlight_diff(item_a_name, item_b_name)
-                    
-                    st.markdown("---")
-                    col1_tab1, col2_tab1 = st.columns(2)
-                    with col1_tab1:
-                        st.markdown("#### Barang Utama")
-                        st.markdown(f"**Nama:** {highlighted_a}", unsafe_allow_html=True)
-                        st.markdown(f"**Harga:** Rp {int(item_a_price):,}".replace(',', '.'))
-                        st.markdown(f"**Satuan:** {item_a_unit}")
-                        st.markdown(f"**Kode:** {item_a_code}")
-                        st.markdown(f"**Kategori:** {item_a_cat}")
-                    
-                    with col2_tab1:
-                        st.markdown("#### Pasangan Mirip")
-                        st.markdown(f"**Nama:** {highlighted_b}", unsafe_allow_html=True)
-                        st.markdown(f"**Harga:** Rp {int(item_b_price):,}".replace(',', '.'))
-                        st.markdown(f"**Satuan:** {item_b_unit}")
-                        st.markdown(f"**Kode:** {item_b_code}")
-                        st.markdown(f"**Kategori:** {item_b_cat}")
-            
-            with tab2:
-                st.subheader(f"Mencari riwayat pembelian untuk: {primary_item}")
-                include_similar = st.checkbox("Sertakan semua barang yang mirip dalam pencarian riwayat (Skor >= 95%)")
-
-                with st.spinner("Memuat data riwayat pembelian..."):
-                    sj_df = load_database(SPREADSHEET_ID_SJ, gid="1615588726") 
-                
-                if not sj_df.empty and 'NAMABRG' in sj_df.columns:
-                    search_terms = [primary_item]
-                    if include_similar:
-                        related_pairs = filtered_df[
-                            (filtered_df['BARANG_A'] == primary_item) | 
-                            (filtered_df['BARANG_B'] == primary_item)
-                        ]
-                        high_score_pairs = related_pairs[related_pairs['SCORE'] >= 95]
-                        
-                        if not high_score_pairs.empty:
-                            similar_items_a = high_score_pairs['BARANG_A'].tolist()
-                            similar_items_b = high_score_pairs['BARANG_B'].tolist()
-                            search_terms = list(set([primary_item] + similar_items_a + similar_items_b))
-
-                    search_pattern = '|'.join([re.escape(term) for term in search_terms])
-                    sj_filtered = sj_df[sj_df['NAMABRG'].str.contains(search_pattern, case=False, na=False, regex=True)]
-                    
-                    if not sj_filtered.empty:
-                        st.write(f"Ditemukan {len(sj_filtered)} riwayat pembelian yang cocok:")
-                        st.dataframe(sj_filtered)
-                    else:
-                        st.warning(f"Tidak ditemukan riwayat pembelian yang cocok di Data SJ.")
-                else:
-                    st.error("Gagal memuat atau memproses Data SJ.")
     else:
         st.warning("Tidak ada data yang cocok dengan filter Anda.")
 else:
     st.info("Pilih filter di sidebar dan klik 'START' untuk memulai.")
+
+# --- Bagian Analisis Detail ---
+st.markdown("---")
+st.header("🔬 Analisis Detail Barang")
+# --- PEMBARUAN: Ganti selectbox dengan text_input ---
+primary_item = st.text_input("Masukkan nama barang untuk dianalisis:", key="detail_search")
+
+if primary_item:
+    tab1, tab2 = st.tabs(["Perbandingan Side-by-Side", "Tinjau Data SJ"])
+
+    with tab1:
+        st.subheader(f"Mencari pasangan mirip untuk: {primary_item}")
+        # Cari di seluruh database kemiripan
+        related_pairs = db_df[
+            (db_df['BARANG_A'].str.contains(primary_item, case=False, na=False)) | 
+            (db_df['BARANG_B'].str.contains(primary_item, case=False, na=False))
+        ]
+        
+        if not related_pairs.empty:
+            st.write(f"Ditemukan {len(related_pairs)} pasangan yang mirip di dalam database:")
+            for _, row in related_pairs.iterrows():
+                # Tentukan mana barang A dan B relatif terhadap input
+                is_a_primary = primary_item.upper() in row['BARANG_A'].upper()
+                
+                item_a_name = row['BARANG_A'] if is_a_primary else row['BARANG_B']
+                item_a_price = row['HARGA_A'] if is_a_primary else row['HARGA_B']
+                item_a_unit = row['SATUAN']
+                item_a_code = row['KODE_A'] if is_a_primary else row['KODE_B']
+                item_a_cat = row['KATEGORI_A'] if is_a_primary else row['KATEGORI_B']
+
+                item_b_name = row['BARANG_B'] if is_a_primary else row['BARANG_A']
+                item_b_price = row['HARGA_B'] if is_a_primary else row['HARGA_A']
+                item_b_unit = row['SATUAN']
+                item_b_code = row['KODE_B'] if is_a_primary else row['KODE_A']
+                item_b_cat = row['KATEGORI_B'] if is_a_primary else row['KATEGORI_A']
+
+                highlighted_a, highlighted_b = highlight_diff(item_a_name, item_b_name)
+                
+                st.markdown("---")
+                col1_tab1, col2_tab1 = st.columns(2)
+                with col1_tab1:
+                    st.markdown("#### Barang Utama")
+                    st.markdown(f"**Nama:** {highlighted_a}", unsafe_allow_html=True)
+                    st.markdown(f"**Harga:** Rp {int(item_a_price):,}".replace(',', '.'))
+                    st.markdown(f"**Satuan:** {item_a_unit}")
+                    st.markdown(f"**Kode:** {item_a_code}")
+                    st.markdown(f"**Kategori:** {item_a_cat}")
+                
+                with col2_tab1:
+                    st.markdown("#### Pasangan Mirip")
+                    st.markdown(f"**Nama:** {highlighted_b}", unsafe_allow_html=True)
+                    st.markdown(f"**Harga:** Rp {int(item_b_price):,}".replace(',', '.'))
+                    st.markdown(f"**Satuan:** {item_b_unit}")
+                    st.markdown(f"**Kode:** {item_b_code}")
+                    st.markdown(f"**Kategori:** {item_b_cat}")
+        else:
+            st.info("Tidak ditemukan pasangan yang mirip di dalam database kemiripan.")
+    
+    with tab2:
+        st.subheader(f"Mencari riwayat pembelian untuk: {primary_item}")
+        include_similar = st.checkbox("Sertakan semua barang yang mirip dalam pencarian riwayat (Skor >= 95%)")
+
+        with st.spinner("Memuat data riwayat pembelian..."):
+            sj_df = load_database(SPREADSHEET_ID_SJ, gid="1615588726") 
+        
+        if not sj_df.empty and 'NAMABRG' in sj_df.columns:
+            search_terms = [primary_item]
+            if include_similar:
+                # Cari pasangan dari seluruh database, bukan dari hasil filter
+                related_pairs_for_sj = db_df[
+                    (db_df['BARANG_A'].str.contains(primary_item, case=False, na=False)) | 
+                    (db_df['BARANG_B'].str.contains(primary_item, case=False, na=False))
+                ]
+                high_score_pairs = related_pairs_for_sj[related_pairs_for_sj['SCORE'] >= 95]
+                
+                if not high_score_pairs.empty:
+                    similar_items_a = high_score_pairs['BARANG_A'].tolist()
+                    similar_items_b = high_score_pairs['BARANG_B'].tolist()
+                    search_terms = list(set([primary_item] + similar_items_a + similar_items_b))
+
+            search_pattern = '|'.join([re.escape(term) for term in search_terms])
+            sj_filtered = sj_df[sj_df['NAMABRG'].str.contains(search_pattern, case=False, na=False, regex=True)]
+            
+            if not sj_filtered.empty:
+                st.write(f"Ditemukan {len(sj_filtered)} riwayat pembelian yang cocok:")
+                st.dataframe(sj_filtered)
+            else:
+                st.warning(f"Tidak ditemukan riwayat pembelian yang cocok di Data SJ.")
+        else:
+            st.error("Gagal memuat atau memproses Data SJ.")
 
 # --- Menampilkan Hasil Cek Barang Baru ---
 if st.session_state.new_item_results is not None:
