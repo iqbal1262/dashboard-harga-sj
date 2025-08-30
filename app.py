@@ -117,7 +117,7 @@ if not db_df.empty:
 # --- Fitur Cek Barang Baru ---
 st.sidebar.markdown("---")
 st.sidebar.header("🧪 Cek Histori Nama Barang")
-new_item_name = st.sidebar.text_input("Masukkan nama barang baru:")
+new_item_name = st.sidebar.text_input("Masukkan nama barang untuk dicek:")
 if st.sidebar.button("Cek Kemiripan"):
     if not new_item_name:
         st.sidebar.warning("Nama barang tidak boleh kosong.")
@@ -127,14 +127,11 @@ if st.sidebar.button("Cek Kemiripan"):
             if not sj_df.empty and 'NAMABRG' in sj_df.columns and 'SJ_CREATED_ON' in sj_df.columns:
                 sj_df['SJ_CREATED_ON'] = pd.to_datetime(sj_df['SJ_CREATED_ON'], errors='coerce')
                 
-                # --- PERBAIKAN: Pembersihan data harga yang lebih kuat ---
-                if 'HARGARATA' in sj_df.columns:
-                    # Menghapus semua karakter non-digit (termasuk 'Rp' dan '.')
-                    cleaned_harga = sj_df['HARGARATA'].astype(str).str.replace(r'[^\d]', '', regex=True)
-                    sj_df['HARGARATA'] = pd.to_numeric(cleaned_harga, errors='coerce').fillna(0)
+                # Mempertahankan tipe data asli dari HARGARATA
                 
+                # --- PEMBARUAN: Logika pivot sekarang berdasarkan NAMABRG, KODEBARANG, dan SATUAN ---
                 sj_df_sorted = sj_df.sort_values(by='SJ_CREATED_ON', ascending=False)
-                master_list_df = sj_df_sorted.groupby(['NAMABRG', 'KODEBARANG']).agg(
+                master_list_df = sj_df_sorted.groupby(['NAMABRG', 'KODEBARANG', 'SATUAN']).agg(
                     HARGARATA=('HARGARATA', 'first'),
                     KATEGORI=('KATEGORI', 'first'),
                     Permintaan_Terakhir=('SJ_CREATED_ON', 'max'),
@@ -158,7 +155,7 @@ if st.sidebar.button("Cek Kemiripan"):
                     variations = master_list_df[master_list_df['NAMABRG'] == current_name]
 
                     for _, detail_row in variations.iterrows():
-                        item_tuple = (detail_row['NAMABRG'], detail_row['KODEBARANG'])
+                        item_tuple = (detail_row['NAMABRG'], detail_row['KODEBARANG'], detail_row['SATUAN'])
                         if item_tuple in processed_items:
                             continue
                         processed_items.add(item_tuple)
@@ -167,9 +164,10 @@ if st.sidebar.button("Cek Kemiripan"):
                         match_results.append({
                             "Barang Mirip di Data SJ": detail_row['NAMABRG'],
                             "Skor Kemiripan (%)": score,
-                            "Harga Rata-rata": detail_row.get("HARGARATA", 0),
+                            "Harga Rata-rata": detail_row.get("HARGARATA", "N/A"),
                             "Kode": detail_row.get("KODEBARANG", "N/A"),
                             "Kategori": detail_row.get("KATEGORI", "N/A"),
+                            "Satuan": detail_row.get("SATUAN", "N/A"),
                             "Permintaan Awal": detail_row.get("Permintaan_Awal", pd.NaT),
                             "Permintaan Terakhir": detail_row.get("Permintaan_Terakhir", pd.NaT) 
                         })
@@ -183,7 +181,7 @@ if st.sidebar.button("Cek Kemiripan"):
                              names_to_process_queue.append(related_name)
 
                 if match_results:
-                    results_df = pd.DataFrame(match_results).drop_duplicates(subset=['Barang Mirip di Data SJ', 'Kode'])
+                    results_df = pd.DataFrame(match_results).drop_duplicates(subset=['Barang Mirip di Data SJ', 'Kode', 'Satuan'])
                     results_df = results_df.sort_values(by="Skor Kemiripan (%)", ascending=False)
                     st.session_state.new_item_results = results_df
                 else:
@@ -308,16 +306,14 @@ if st.session_state.new_item_results is not None:
     if not st.session_state.new_item_results.empty:
         st.write(f"Barang yang mirip dengan '{new_item_name}':")
         
-        # --- PERBAIKAN: Membuat salinan untuk diformat, agar tidak merusak session state ---
         results_df_display = st.session_state.new_item_results.copy()
         
-        results_df_display["Harga Rata-rata"] = results_df_display["Harga Rata-rata"].apply(lambda x: f"Rp {int(x):,}".replace(',', '.'))
-
         ordered_columns = [
             "Skor Kemiripan (%)", 
             "Barang Mirip di Data SJ", 
             "Kode", 
-            "Kategori", 
+            "Kategori",
+            "Satuan",
             "Harga Rata-rata",
             "Permintaan Awal",
             "Permintaan Terakhir"
@@ -331,6 +327,7 @@ if st.session_state.new_item_results is not None:
                 "Barang Mirip di Data SJ": st.column_config.TextColumn("Barang Mirip",width="large"),
                 "Kode": st.column_config.TextColumn("Kode",width="small"),
                 "Kategori": st.column_config.TextColumn("Kategori",width="small"),
+                "Satuan": st.column_config.TextColumn("Satuan", width="small"),
                  "Harga Rata-rata": st.column_config.TextColumn("Harga Rata-rata",width="small"),
                 "Permintaan Awal": st.column_config.DateColumn("Permintaan Awal",format="DD-MM-YYYY",width="small"),
                 "Permintaan Terakhir": st.column_config.DateColumn("Permintaan Terakhir",format="DD-MM-YYYY",width="small")
