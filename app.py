@@ -202,6 +202,11 @@ if not db_df.empty:
 # --- Fitur Cek Barang Baru ---
 st.sidebar.markdown("---")
 st.sidebar.header("🧪 Cek Histori Nama Barang")
+# --- PEMBARUAN: Menambahkan st.info ---
+# st.sidebar.caption("Gunakan menu ini untuk memeriksa apakah suatu nama barang sudah ada di histori data SJ untuk menjaga konsistensi pencatatan.")
+with st.sidebar.expander("ℹ️ Tentang Fitur Ini"):
+    st.write("Gunakan menu ini untuk memeriksa apakah suatu nama barang sudah ada di histori data SJ untuk menjaga konsistensi pencatatan.")
+# st.sidebar.info("Gunakan menu ini untuk memeriksa apakah suatu nama barang sudah ada di histori data SJ untuk menjaga konsistensi pencatatan.")
 new_item_name = st.sidebar.text_input("Masukkan nama barang untuk dicek:")
 if st.sidebar.button("Cek Kemiripan"):
     if not new_item_name:
