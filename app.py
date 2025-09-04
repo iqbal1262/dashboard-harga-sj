@@ -74,9 +74,31 @@ def load_excel_from_drive(file_id: str, sheet_name: Optional[str] = None) -> pd.
             first_key = list(df.keys())[0]
             df = df[first_key]
 
+        # --- PERBAIKAN: Membersihkan nama kolom secara otomatis ---
+        df.columns = df.columns.str.strip()
+
         # Bersihkan kolom index sisa export jika ada
         if "Unnamed: 0" in df.columns:
             df = df.drop(columns=["Unnamed: 0"])
+            
+        # --- PERUBAHAN: Selalu pastikan kolom harga dan jumlah adalah numerik ---
+        currency_cols = ['HARGARATA', 'TOTALHARGA']
+        for col in currency_cols:
+            if col in df.columns:
+                cleaned_val = df[col].astype(str).str.replace(r'[^\d.]', '', regex=True)
+                df[col] = pd.to_numeric(cleaned_val, errors='coerce')
+        
+        # --- PERBAIKAN: Mengatasi error casting float ke int ---
+        int_cols = ['JUMLAH', 'JMLDISETUJUI', 'JML_DITERIMA']
+        for col in int_cols:
+            if col in df.columns:
+                # Mengisi NaN dengan 0 dan membulatkan sebelum mengubah ke integer
+                numeric_vals = pd.to_numeric(df[col], errors='coerce').fillna(0)
+                df[col] = numeric_vals.round().astype(int)
+
+        if 'SJ_CREATED_ON' in df.columns:
+            df['SJ_CREATED_ON'] = pd.to_datetime(df['SJ_CREATED_ON'], errors='coerce')
+            
         return df
     except Exception as e:
         st.error(f"Gagal memuat Excel dari Drive (fileId={file_id}): {e}")
@@ -187,9 +209,9 @@ if st.sidebar.button("Cek Kemiripan"):
     else:
         with st.spinner("Memuat data master SJ dan mencari kemiripan..."):
             sj_df = load_excel_from_drive(FILE_ID_SJ, sheet_name=SHEET_NAME_SJ)
-            if not sj_df.empty and 'NAMABRG' in sj_df.columns and 'SJ_CREATED_ON' in sj_df.columns:
-                sj_df['SJ_CREATED_ON'] = pd.to_datetime(sj_df['SJ_CREATED_ON'], errors='coerce')
 
+            if not sj_df.empty and 'NAMABRG' in sj_df.columns and 'SJ_CREATED_ON' in sj_df.columns:
+                
                 sj_df_sorted = sj_df.sort_values(by='SJ_CREATED_ON', ascending=False)
                 master_list_df = sj_df_sorted.groupby(['NAMABRG', 'KODEBARANG', 'SATUAN']).agg(
                     HARGARATA=('HARGARATA', 'first'),
@@ -224,10 +246,10 @@ if st.sidebar.button("Cek Kemiripan"):
                         match_results.append({
                             "Barang Mirip di Data SJ": detail_row['NAMABRG'],
                             "Skor Kemiripan (%)": score,
-                            "Harga Rata-rata": detail_row.get("HARGARATA", "N/A"),
+                            "Harga Rata-rata": detail_row.get(f"HARGARATA", 0),
                             "Kode": detail_row.get("KODEBARANG", "N/A"),
-                            "Kategori": detail_row.get("KATEGORI", "N/A"),
-                            "Satuan": detail_row.get("SATUAN", "N/A"),
+                            "Kategori": detail_row.get("KATEGORI", "N_A"),
+                            "Satuan": detail_row.get("SATUAN", "N_A"),
                             "Permintaan Awal": detail_row.get("Permintaan_Awal", pd.NaT),
                             "Permintaan Terakhir": detail_row.get("Permintaan_Terakhir", pd.NaT)
                         })
@@ -267,11 +289,11 @@ if st.session_state.filtered_df is not None:
         with col2:
             sort_order_option = st.selectbox(
                 "Urutkan berdasarkan SCORE:",
-                ('Tertinggi ke Terendah', 'Terkecil ke Teringgi'),
+                ('Tertinggi ke Terendah', 'Terkecil ke Tertinggi'),
                 key='sort_order'
             )
 
-        sort_ascending = (sort_order_option == 'Terkecil ke Teringgi')
+        sort_ascending = (sort_order_option == 'Terkecil ke Tertinggi')
         sorted_df = filtered_df.sort_values(by="SCORE", ascending=sort_ascending)
 
         if display_limit_option == '100 Teratas':
@@ -396,7 +418,17 @@ if primary_item:
 
             if not sj_filtered.empty:
                 st.write(f"Ditemukan {len(sj_filtered)} riwayat pembelian yang cocok:")
-                st.dataframe(sj_filtered)
+                # --- PERUBAHAN: Tambahkan format currency dan format lainnya di sini ---
+                format_dict = {
+                    'HARGARATA': 'Rp {:,.0f}',
+                    'TOTALHARGA': 'Rp {:,.0f}',
+                    'SJ_CREATED_ON': '{:%d/%m/%y}',
+                    'JUMLAH': '{:,.0f}',
+                    'JMLDISETUJUI': '{:,.0f}',
+                    'JML_DITERIMA': '{:,.0f}'
+                }
+                final_format_dict = {k: v for k, v in format_dict.items() if k in sj_filtered.columns}
+                st.dataframe(sj_filtered.style.format(final_format_dict))
             else:
                 st.warning(f"Tidak ditemukan riwayat pembelian yang cocok di Data SJ.")
         else:
@@ -424,20 +456,17 @@ if st.session_state.new_item_results is not None:
         display_cols = [c for c in ordered_columns if c in results_df_display.columns]
         display_results_df = results_df_display[display_cols]
 
+        # --- PERUBAHAN: Gunakan .style.format untuk tampilan currency dan format lainnya ---
         st.dataframe(
-            display_results_df,
-            column_config={
-                "Skor Kemiripan (%)": st.column_config.NumberColumn("Skor (%)", format="%.2f", width="small"),
-                "Barang Mirip di Data SJ": st.column_config.TextColumn("Barang Mirip", width="large"),
-                "Kode": st.column_config.TextColumn("Kode", width="small"),
-                "Kategori": st.column_config.TextColumn("Kategori", width="small"),
-                "Satuan": st.column_config.TextColumn("Satuan", width="small"),
-                "Harga Rata-rata": st.column_config.TextColumn("Harga Rata-rata", width="small"),
-                "Permintaan Awal": st.column_config.DateColumn("Permintaan Awal", format="DD-MM-YYYY", width="small"),
-                "Permintaan Terakhir": st.column_config.DateColumn("Permintaan Terakhir", format="DD-MM-YYYY", width="small")
-            },
+            display_results_df.style.format({
+                'Harga Rata-rata': 'Rp {:,.0f}',
+                'Skor Kemiripan (%)': '{:.2f}',
+                'Permintaan Awal': '{:%d-%m-%Y}',
+                'Permintaan Terakhir': '{:%d-%m-%Y}'
+            }),
             use_container_width=True,
             hide_index=True
         )
     else:
         st.success(f"Tidak ditemukan barang yang mirip dengan '{new_item_name}' (di atas 50%). Barang ini kemungkinan besar unik.")
+
