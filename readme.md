@@ -2,7 +2,7 @@
 
 ## Tentang Dashboard
 
-Dashboard Streamlit untuk meninjau konsistensi data master barang. Menampilkan pasangan nama barang yang mirip, membantu menemukan duplikasi, beda penulisan, dan anomali harga. Tersedia tampilan riwayat pembelian serta cek nama barang baru sebelum dicatat.
+Dashboard berbasis Streamlit untuk meninjau konsistensi data master barang. Menampilkan pasangan nama barang yang mirip, membantu menemukan duplikasi, beda penulisan, dan anomali harga. Tersedia tampilan riwayat pembelian serta cek nama barang baru sebelum dicatat.
 
 ## Fitur
 
@@ -15,7 +15,7 @@ Dashboard Streamlit untuk meninjau konsistensi data master barang. Menampilkan p
 ## Cara Kerja (singkat)
 
 * **Viewer saja**: aplikasi hanya menampilkan data yang sudah diproses di luar (hasil matching).
-* **Sumber data**: dua file (Excel/Google Sheet) — 1) hasil kemiripan, 2) riwayat pembelian (SJ).
+* **Sumber data**: dua file (Excel/Google Sheet) — 1) hasil kemiripan, 2) riwayat SJ.
 * **Akses privat**: file diambil dari Google Drive menggunakan **Service Account** + **Streamlit Secrets** (tanpa link publik).
 
 ## Tools & Libraries
@@ -33,5 +33,3 @@ Dashboard Streamlit untuk meninjau konsistensi data master barang. Menampilkan p
 * Scope yang dipakai: `drive.readonly`.
 
 ---
-
-> Catatan: jika salah satu sumber berupa Google Sheet, aplikasi otomatis mengekspor ke XLSX saat membaca.
