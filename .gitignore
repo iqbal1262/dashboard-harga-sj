@@ -1,0 +1,22 @@
+# Git backup & internals
+.git_backup/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+
+# Debug
+debug.py
+
+# Streamlit secrets & creds
+.streamlit/secrets.toml
+service_account.json
+*.pem
+*.key
+
+# OS
+.DS_Store
+Thumbs.db
