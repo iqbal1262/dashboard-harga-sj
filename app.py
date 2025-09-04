@@ -251,7 +251,7 @@ if st.sidebar.button("Cek Kemiripan"):
                         match_results.append({
                             "Barang Mirip di Data SJ": detail_row['NAMABRG'],
                             "Skor Kemiripan (%)": score,
-                            "Harga Rata-rata": detail_row.get(f"HARGARATA", 0),
+                            "Harga Rata-Rata": detail_row.get(f"HARGARATA", 0),
                             "Kode": detail_row.get("KODEBARANG", "N/A"),
                             "Kategori": detail_row.get("KATEGORI", "N_A"),
                             "Satuan": detail_row.get("SATUAN", "N_A"),
