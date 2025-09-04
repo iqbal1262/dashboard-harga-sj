@@ -454,7 +454,7 @@ if st.session_state.new_item_results is not None:
             "Kode",
             "Kategori",
             "Satuan",
-            "Harga Rata-rata",
+            "Harga Rata-Rata",
             "Permintaan Awal",
             "Permintaan Terakhir"
         ]
@@ -464,7 +464,7 @@ if st.session_state.new_item_results is not None:
         # --- PERUBAHAN: Gunakan .style.format untuk tampilan currency dan format lainnya ---
         st.dataframe(
             display_results_df.style.format({
-                'Harga Rata-rata': 'Rp {:,.0f}',
+                'Harga Rata-Rata': 'Rp {:,.0f}',
                 'Skor Kemiripan (%)': '{:.2f}',
                 'Permintaan Awal': '{:%d-%m-%Y}',
                 'Permintaan Terakhir': '{:%d-%m-%Y}'
