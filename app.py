@@ -202,11 +202,8 @@ if not db_df.empty:
 # --- Fitur Cek Barang Baru ---
 st.sidebar.markdown("---")
 st.sidebar.header("🧪 Cek Histori Nama Barang")
-# --- PEMBARUAN: Menambahkan st.info ---
-# st.sidebar.caption("Gunakan menu ini untuk memeriksa apakah suatu nama barang sudah ada di histori data SJ untuk menjaga konsistensi pencatatan.")
 with st.sidebar.expander("ℹ️ Tentang Fitur Ini"):
     st.write("Gunakan menu ini untuk memeriksa apakah suatu nama barang sudah ada di histori data SJ untuk menjaga konsistensi pencatatan.")
-# st.sidebar.info("Gunakan menu ini untuk memeriksa apakah suatu nama barang sudah ada di histori data SJ untuk menjaga konsistensi pencatatan.")
 new_item_name = st.sidebar.text_input("Masukkan nama barang untuk dicek:")
 if st.sidebar.button("Cek Kemiripan"):
     if not new_item_name:
@@ -399,6 +396,14 @@ if primary_item:
 
     with tab2:
         st.subheader(f"Mencari riwayat pembelian untuk: {primary_item}")
+        
+        # --- PEMBARUAN: Tambahkan filter waktu di sini ---
+        time_filter_option = st.selectbox(
+            "Filter riwayat berdasarkan waktu:",
+            ('Tampilkan Semua', '3 Bulan Terakhir', '6 Bulan Terakhir', '1 Tahun Terakhir'),
+            key='time_filter'
+        )
+
         include_similar = st.checkbox("Sertakan semua barang yang mirip dalam pencarian riwayat (Skor >= 95%)")
 
         with st.spinner("Memuat data riwayat pembelian..."):
@@ -419,11 +424,24 @@ if primary_item:
                     search_terms = list(set([primary_item] + similar_items_a + similar_items_b))
 
             search_pattern = '|'.join([re.escape(term) for term in search_terms])
-            sj_filtered = sj_df[sj_df['NAMABRG'].str.contains(search_pattern, case=False, na=False, regex=True)]
+            sj_filtered_by_name = sj_df[sj_df['NAMABRG'].str.contains(search_pattern, case=False, na=False, regex=True)]
 
-            if not sj_filtered.empty:
-                st.write(f"Ditemukan {len(sj_filtered)} riwayat pembelian yang cocok:")
-                # --- PERUBAHAN: Tambahkan format currency dan format lainnya di sini ---
+            # --- PEMBARUAN: Terapkan filter waktu ---
+            sj_final_filtered = sj_filtered_by_name
+            if time_filter_option != 'Tampilkan Semua':
+                today = pd.Timestamp.now()
+                if time_filter_option == '3 Bulan Terakhir':
+                    cutoff_date = today - pd.DateOffset(months=3)
+                elif time_filter_option == '6 Bulan Terakhir':
+                    cutoff_date = today - pd.DateOffset(months=6)
+                elif time_filter_option == '1 Tahun Terakhir':
+                    cutoff_date = today - pd.DateOffset(years=1)
+                
+                if 'SJ_CREATED_ON' in sj_final_filtered.columns:
+                    sj_final_filtered = sj_final_filtered[sj_final_filtered['SJ_CREATED_ON'] >= cutoff_date]
+
+            if not sj_final_filtered.empty:
+                st.write(f"Ditemukan {len(sj_final_filtered)} riwayat pembelian yang cocok:")
                 format_dict = {
                     'HARGARATA': 'Rp {:,.0f}',
                     'TOTALHARGA': 'Rp {:,.0f}',
@@ -432,8 +450,8 @@ if primary_item:
                     'JMLDISETUJUI': '{:,.0f}',
                     'JML_DITERIMA': '{:,.0f}'
                 }
-                final_format_dict = {k: v for k, v in format_dict.items() if k in sj_filtered.columns}
-                st.dataframe(sj_filtered.style.format(final_format_dict))
+                final_format_dict = {k: v for k, v in format_dict.items() if k in sj_final_filtered.columns}
+                st.dataframe(sj_final_filtered.style.format(final_format_dict))
             else:
                 st.warning(f"Tidak ditemukan riwayat pembelian yang cocok di Data SJ.")
         else:
@@ -461,7 +479,6 @@ if st.session_state.new_item_results is not None:
         display_cols = [c for c in ordered_columns if c in results_df_display.columns]
         display_results_df = results_df_display[display_cols]
 
-        # --- PERUBAHAN: Gunakan .style.format untuk tampilan currency dan format lainnya ---
         st.dataframe(
             display_results_df.style.format({
                 'Harga Rata-Rata': 'Rp {:,.0f}',
@@ -474,4 +491,3 @@ if st.session_state.new_item_results is not None:
         )
     else:
         st.success(f"Tidak ditemukan barang yang mirip dengan '{new_item_name}' (di atas 50%). Barang ini kemungkinan besar unik.")
-
